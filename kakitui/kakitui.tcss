@@ -1,0 +1,234 @@
+/* kakitui – main theme / stylesheet
+ *
+ * Dark-first design inspired by smassh / monkeytype.
+ * Uses Textual's design system variables where possible.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Global                                                              */
+/* ------------------------------------------------------------------ */
+
+Screen {
+    background: #1e1e2e;
+    color: #cdd6f4;
+}
+
+/* ------------------------------------------------------------------ */
+/* Home Screen                                                         */
+/* ------------------------------------------------------------------ */
+
+HomeScreen {
+    align: center middle;
+}
+
+#home-container {
+    width: 64;
+    max-width: 90%;
+    height: auto;
+    max-height: 90%;
+}
+
+#search-label {
+    width: 100%;
+    text-align: center;
+    color: #6c7086;
+    margin-bottom: 1;
+}
+
+#search-box {
+    width: 100%;
+    margin: 1 0;
+    border: tall #89b4fa;
+    background: #313244;
+    color: #cdd6f4;
+}
+
+#search-box:focus {
+    border: tall #f5c2e7;
+}
+
+#no-results {
+    width: 100%;
+    text-align: center;
+    color: #f38ba8;
+    margin-top: 1;
+    display: none;
+}
+
+#results-list {
+    width: 100%;
+    height: auto;
+    max-height: 22;
+    min-height: 0;
+    margin-top: 1;
+    background: #313244;
+    border: tall #45475a;
+    padding: 0 1;
+}
+
+#results-list > .option-list--option-highlighted {
+    background: #45475a;
+    color: #f5c2e7;
+}
+
+/* ------------------------------------------------------------------ */
+/* Banner                                                              */
+/* ------------------------------------------------------------------ */
+
+Banner {
+    width: 100%;
+    content-align: center middle;
+    text-align: center;
+    padding: 1 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Kanji Detail Screen                                                 */
+/* ------------------------------------------------------------------ */
+
+KanjiScreen {
+    layout: horizontal;
+}
+
+#kanji-sidebar {
+    width: 24;
+    min-width: 18;
+    height: 100%;
+    content-align: center middle;
+    text-align: center;
+    background: #181825;
+    border-right: thick #89b4fa;
+    padding: 2 1;
+}
+
+#kanji-big {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: #f5c2e7;
+}
+
+#kanji-meaning-sidebar {
+    width: 100%;
+    text-align: center;
+    color: #a6adc8;
+    margin-top: 1;
+}
+
+#kanji-reading-sidebar {
+    width: 100%;
+    text-align: center;
+    color: #6c7086;
+    margin-top: 0;
+}
+
+#detail-tabs {
+    width: 1fr;
+    height: 100%;
+}
+
+#loading-label {
+    width: 100%;
+    text-align: center;
+    content-align: center middle;
+    height: 100%;
+    color: #6c7086;
+}
+
+/* Tabs styling */
+TabbedContent {
+    height: 100%;
+}
+
+Tabs {
+    background: #181825;
+    dock: top;
+}
+
+Tab {
+    color: #6c7086;
+    background: #181825;
+    padding: 0 2;
+}
+
+Tab.-active {
+    color: #f5c2e7;
+    text-style: bold;
+    background: #1e1e2e;
+}
+
+Tab:hover {
+    color: #cdd6f4;
+}
+
+ContentSwitcher {
+    background: #1e1e2e;
+}
+
+TabPane {
+    padding: 1 2;
+}
+
+/* Info headings */
+.info-heading {
+    text-style: bold;
+    color: #89b4fa;
+    margin-bottom: 1;
+}
+
+.info-row {
+    margin-bottom: 0;
+}
+
+/* Pronunciation */
+.pron-heading {
+    text-style: bold;
+    color: #89b4fa;
+    margin-bottom: 1;
+}
+
+.pron-reading {
+    margin-bottom: 1;
+    color: #cdd6f4;
+}
+
+.example-item {
+    margin-bottom: 0;
+}
+
+/* Buttons */
+Button {
+    margin-top: 1;
+    min-width: 24;
+    background: #45475a;
+    color: #cdd6f4;
+    border: tall #585b70;
+}
+
+Button:hover {
+    background: #585b70;
+}
+
+Button:focus {
+    border: tall #f5c2e7;
+}
+
+/* Footer */
+Footer {
+    background: #181825;
+    color: #6c7086;
+}
+
+FooterKey {
+    color: #89b4fa;
+    background: #181825;
+}
+
+/* ------------------------------------------------------------------ */
+/* Stroke / Animation URL labels                                       */
+/* ------------------------------------------------------------------ */
+
+.stroke-url-label {
+    margin-top: 1;
+    color: #89b4fa;
+}
