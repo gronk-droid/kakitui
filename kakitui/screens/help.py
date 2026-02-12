@@ -23,7 +23,8 @@ HOME_HINTS = [
 
 KANJI_HINTS = [
     ("Esc / b", "Back to search"),
-    ("Tab", "Switch tab (Strokes / Animation / Info / Pronunciation)"),
+    ("Tab", "Switch tab (Strokes / Info / Pronunciation)"),
+    ("← / → or ↑ / ↓", "Step through strokes (Strokes tab)"),
     ("p", "Play first example audio"),
 ]
 
