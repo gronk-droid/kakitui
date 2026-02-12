@@ -62,12 +62,6 @@ def stroke_diagram_url(kname: str, stroke_num: int) -> str:
     return stroke_diagram_path_or_url(kname, stroke_num)
 
 
-def animation_url(kname: str) -> str:
-    """Build the animation video URL for a given kanji kname."""
-    safe = _media_safe_kname(kname)
-    return f"{_MEDIA_BASE}/kanji_animations/{safe}_00.mp4"
-
-
 def example_audio_url(kname: str, index: int) -> str:
     """Build an example audio URL.
 
@@ -166,7 +160,6 @@ def _row_to_detail(row: dict[str, str]) -> KanjiDetail:
         ]
         if strokes
         else [],
-        animation_url=animation_url(kname),
         audio_urls=[example_audio_url(kname, i) for i in range(len(examples))],
     )
 

@@ -150,10 +150,6 @@ def get_kanji_detail(character: str) -> KanjiDetail | None:
     # Media
     stroke_url = ""
     stroke_urls: list[str] = []
-    anim_url = ""
-    video = kanji_info.get("video", {})
-    if isinstance(video, dict):
-        anim_url = video.get("mp4", "") or ""
     strokes_info = kanji_info.get("strokes", {})
     if isinstance(strokes_info, dict):
         images = strokes_info.get("images", [])
@@ -200,6 +196,5 @@ def get_kanji_detail(character: str) -> KanjiDetail | None:
         hint=references.get("hint", "") or "",
         stroke_diagram_url=stroke_url,
         stroke_image_urls=stroke_urls,
-        animation_url=anim_url,
         audio_urls=audio_urls,
     )
