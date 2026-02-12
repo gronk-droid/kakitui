@@ -13,8 +13,8 @@ example words — all from your terminal.
 - Centered search box supporting kanji, hiragana, romaji, and English
 - Selectable search results
 - Kanji detail view with four tabs:
-  - **Strokes** — stroke order diagram URLs (individual + complete)
-  - **Animation** — stroke order animation URL
+  - **Strokes** — stroke order diagram shown in-app (or open in browser)
+  - **Animation** — stroke-by-stroke animation in-app (or open video in browser)
   - **Info** — grade, stroke count, radical (name, meaning, position), mnemonic hint (API only)
   - **Pronunciation** — on'yomi, kun'yomi, example words with audio indicators
 - Persistent kanji sidebar on the detail screen
@@ -25,6 +25,15 @@ example words — all from your terminal.
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (recommended for project management)
+
+### Optional: local stroke diagrams (offline / no 404s)
+
+Stroke order SVGs are loaded from **media.kanjialive.com** by default. To use local files instead (e.g. after unzipping [kanji-data-media/kanji_strokes.zip](https://github.com/kanjialive/kanji-data-media/raw/master/kanji-strokes/kanji_strokes.zip)):
+
+1. Unzip the archive.
+2. Put the contents inside **`kakitui/data/assets/kanji_strokes/`** (so that files like `koku(motsu)_1.svg` live directly in that folder).
+
+The app will use these files when present and fall back to the remote URLs otherwise. Animations and example audio still use the remote server unless you add those assets too.
 
 ## Installation
 
@@ -52,6 +61,7 @@ uv run python -m kakitui
 
 | Key | Action |
 |-----|--------|
+| `?` | **Show key bindings** (LazyVim-style help overlay) |
 | `Enter` | Submit search / select result |
 | `↑` / `↓` | Navigate search results / tabs |
 | `Escape` | Go back / quit |
@@ -59,17 +69,57 @@ uv run python -m kakitui
 | `p` | Play first example audio (detail screen) |
 | `q` | Quit |
 
+## Configuration
+
+Configuration is read from **`~/.config/kakitui/config.ini`** (Linux/macOS)
+or **`%APPDATA%\\kakitui\\config.ini`** (Windows). Environment variables
+override config file values.
+
+Copy the template and edit:
+
+```bash
+mkdir -p ~/.config/kakitui
+cp config_template.ini ~/.config/kakitui/config.ini
+```
+
+### Config file format
+
+```ini
+[kanji_alive]
+# RapidAPI key for Kanji Alive (optional)
+api_key = your_rapidapi_key_here
+
+[kakitui]
+# Data source: api | local | auto (default: auto)
+use_api = auto
+```
+
+- **`use_api`**
+  - `auto` — Use API if key is set, otherwise fall back to local CSV.
+  - `api` — Use API only (no results if key missing or request fails).
+  - `local` — Use bundled CSV only; no API calls.
+
+Environment overrides:
+
+- `KANJI_ALIVE_API_KEY` — API key (overrides `[kanji_alive] api_key`).
+- `KAKITUI_USE_API` — One of `api`, `local`, `auto` (overrides `[kakitui] use_api`).
+
 ## Kanji Alive API (optional)
 
 By default, kakitui uses a bundled copy of `ka_data.csv` from
 [kanji-data-media](https://github.com/kanjialive/kanji-data-media) for
 offline search and metadata. This works without any API key.
 
-For richer data (including mnemonic hints and verified media URLs), you
-can optionally set a [Kanji Alive RapidAPI](https://rapidapi.com/kanjialive/api/learn-to-read-and-write-japanese-kanji/)
-key:
+For richer data (including mnemonic hints and verified media URLs), set
+a [Kanji Alive RapidAPI](https://rapidapi.com/kanjialive/api/learn-to-read-and-write-japanese-kanji/)
+key in your config file or environment:
 
 ```bash
+# Option 1: config file ~/.config/kakitui/config.ini
+# [kanji_alive]
+# api_key = your_rapidapi_key_here
+
+# Option 2: environment
 export KANJI_ALIVE_API_KEY="your-rapidapi-key-here"
 uv run kakitui
 ```
@@ -120,10 +170,12 @@ kakitui/
 ├── data/
 │   ├── __init__.py
 │   ├── api.py           # Kanji Alive API client
+│   ├── config.py        # Config loader (~/.config/kakitui/config.ini)
 │   ├── local.py         # Local CSV search + media URLs
 │   ├── models.py        # Data models (KanjiResult, KanjiDetail, etc.)
-│   ├── source.py        # Unified data facade (API → CSV fallback)
+│   ├── source.py        # Unified data facade (API / local / auto)
 │   └── ka_data.csv      # Bundled kanji data (1,234 kanji)
+├── media.py             # Fetch SVG media, convert to PNG for in-app display
 ├── screens/
 │   ├── __init__.py
 │   ├── home.py          # Home screen (banner + search + results)

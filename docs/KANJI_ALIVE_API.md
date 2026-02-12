@@ -9,15 +9,19 @@ both human contributors and AI agents working on the codebase.
 
 ## Data sources overview
 
-kakitui supports **two** data sources, selected automatically:
+kakitui supports **two** data sources. Which one is used is controlled by
+the **`use_api`** setting (config or env `KAKITUI_USE_API`):
 
 | Source | When used | Module |
 |--------|-----------|--------|
-| **Kanji Alive API** (RapidAPI) | `KANJI_ALIVE_API_KEY` env var is set | `kakitui/data/api.py` |
-| **Local CSV** (`ka_data.csv`) | No API key, or API request fails | `kakitui/data/local.py` |
+| **Kanji Alive API** (RapidAPI) | `use_api` is `api` or `auto` and API key is set | `kakitui/data/api.py` |
+| **Local CSV** (`ka_data.csv`) | `use_api` is `local`, or no key / API failure when `auto` | `kakitui/data/local.py` |
 
-The unified facade in `kakitui/data/source.py` tries the API first and
-falls back to local transparently.
+- **`auto`** (default): Try API first; on failure or missing key, use local CSV.
+- **`api`**: Use API only (no fallback).
+- **`local`**: Use local CSV only (no API calls).
+
+The unified facade in `kakitui/data/source.py` implements this logic.
 
 ---
 
@@ -33,9 +37,12 @@ falls back to local transparently.
 | Host header | `X-RapidAPI-Host: kanjialive-kanjialive.p.rapidapi.com` |
 | Docs | <https://app.kanjialive.com/api/docs> |
 
-The key is read from the environment variable **`KANJI_ALIVE_API_KEY`**.
-When the variable is absent or empty the app silently skips the API and
-uses the local CSV.
+The key is read from (in order):
+
+1. Environment variable **`KANJI_ALIVE_API_KEY`**
+2. Config file **`~/.config/kakitui/config.ini`** → `[kanji_alive]` → `api_key`
+
+When no key is set and `use_api` is `auto`, the app uses the local CSV.
 
 ### Endpoints used
 
