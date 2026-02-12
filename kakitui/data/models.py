@@ -57,5 +57,6 @@ class KanjiDetail:
 
     # Media URLs (populated by data source)
     stroke_diagram_url: str = ""
+    stroke_image_urls: list[str] = field(default_factory=list)  # ordered stroke SVGs for in-app display
     animation_url: str = ""
     audio_urls: list[str] = field(default_factory=list)

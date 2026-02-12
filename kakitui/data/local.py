@@ -11,7 +11,9 @@ import json
 import re
 import unicodedata
 from importlib import resources
+from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from kakitui.data.models import ExampleWord, KanjiDetail, KanjiResult, RadicalInfo
 
@@ -19,24 +21,51 @@ if TYPE_CHECKING:
     pass
 
 # ---------------------------------------------------------------------------
-# Media URL helpers
+# Local assets (unzipped kanji_strokes from kanji-data-media)
+# ---------------------------------------------------------------------------
+
+_ASSETS_STROKES_DIR = Path(__file__).resolve().parent / "assets" / "kanji_strokes"
+
+
+def _stroke_local_path(kname: str, stroke_num: int) -> Path | None:
+    """Return path to local stroke SVG if it exists. Filenames: {kname}_{n}.svg (no zero-pad)."""
+    if not kname:
+        return None
+    path = _ASSETS_STROKES_DIR / f"{kname}_{stroke_num}.svg"
+    return path if path.is_file() else None
+
+
+# ---------------------------------------------------------------------------
+# Media URL / path helpers
 # ---------------------------------------------------------------------------
 
 _MEDIA_BASE = "https://media.kanjialive.com"
 
 
-def stroke_diagram_url(kname: str, stroke_num: int) -> str:
-    """Build a stroke-order SVG URL for a given kanji kname and stroke number.
+def _media_safe_kname(kname: str) -> str:
+    """Convert kname for remote media.kanjialive.com (parentheses -> hyphen, then encode)."""
+    normalized = re.sub(r"\(([^)]*)\)", r"-\1", kname)
+    return quote(normalized, safe="-._~")
 
-    Kanji Alive stores individual stroke SVGs named like:
-        {kname}_00001.svg, {kname}_00002.svg, ...
-    """
-    return f"{_MEDIA_BASE}/kanji_strokes/{kname}_{stroke_num:05d}.svg"
+
+def stroke_diagram_path_or_url(kname: str, stroke_num: int) -> str:
+    """Local path (if assets exist) or remote URL for one stroke SVG."""
+    local = _stroke_local_path(kname, stroke_num)
+    if local is not None:
+        return str(local.resolve())
+    safe = _media_safe_kname(kname)
+    return f"{_MEDIA_BASE}/kanji_strokes/{safe}_{stroke_num:05d}.svg"
+
+
+def stroke_diagram_url(kname: str, stroke_num: int) -> str:
+    """Build stroke-order SVG path or URL. Prefers local assets when present."""
+    return stroke_diagram_path_or_url(kname, stroke_num)
 
 
 def animation_url(kname: str) -> str:
     """Build the animation video URL for a given kanji kname."""
-    return f"{_MEDIA_BASE}/kanji_animations/{kname}_00.mp4"
+    safe = _media_safe_kname(kname)
+    return f"{_MEDIA_BASE}/kanji_animations/{safe}_00.mp4"
 
 
 def example_audio_url(kname: str, index: int) -> str:
@@ -45,8 +74,9 @@ def example_audio_url(kname: str, index: int) -> str:
     Example audio files are named: {kname}_06_{letter}.mp3
     where letter goes a, b, c, ... matching the example order.
     """
+    safe = _media_safe_kname(kname)
     letter = chr(ord("a") + index)
-    return f"{_MEDIA_BASE}/examples_audio/{kname}_06_{letter}.mp3"
+    return f"{_MEDIA_BASE}/examples_audio/{safe}_06_{letter}.mp3"
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +161,11 @@ def _row_to_detail(row: dict[str, str]) -> KanjiDetail:
             position=row.get("rad_position", ""),
         ),
         stroke_diagram_url=stroke_diagram_url(kname, strokes) if strokes else "",
+        stroke_image_urls=[
+            stroke_diagram_url(kname, i) for i in range(1, strokes + 1)
+        ]
+        if strokes
+        else [],
         animation_url=animation_url(kname),
         audio_urls=[example_audio_url(kname, i) for i in range(len(examples))],
     )

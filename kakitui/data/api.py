@@ -4,8 +4,9 @@ Uses the public Kanji Alive API (via RapidAPI) when an API key is
 configured.  Falls back to local CSV data when the key is absent or
 on request failure.
 
-Environment variable:
-    KANJI_ALIVE_API_KEY  – RapidAPI key for Kanji Alive
+Configuration (highest priority first):
+    - Environment variable KANJI_ALIVE_API_KEY
+    - Config file ~/.config/kakitui/config.ini section [kanji_alive] key api_key
 
 See docs/KANJI_ALIVE_API.md for full endpoint documentation.
 """
@@ -13,11 +14,11 @@ See docs/KANJI_ALIVE_API.md for full endpoint documentation.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import requests
 
+from kakitui.data.config import get_api_key
 from kakitui.data.models import ExampleWord, KanjiDetail, KanjiResult, RadicalInfo
 
 log = logging.getLogger(__name__)
@@ -31,8 +32,8 @@ BASE_URL = f"https://{RAPIDAPI_HOST}/api/public"
 
 
 def _api_key() -> str | None:
-    """Read the Kanji Alive RapidAPI key from the environment."""
-    return os.environ.get("KANJI_ALIVE_API_KEY")
+    """Read the Kanji Alive RapidAPI key from config or environment."""
+    return get_api_key()
 
 
 def api_available() -> bool:
@@ -148,6 +149,7 @@ def get_kanji_detail(character: str) -> KanjiDetail | None:
 
     # Media
     stroke_url = ""
+    stroke_urls: list[str] = []
     anim_url = ""
     video = kanji_info.get("video", {})
     if isinstance(video, dict):
@@ -156,7 +158,8 @@ def get_kanji_detail(character: str) -> KanjiDetail | None:
     if isinstance(strokes_info, dict):
         images = strokes_info.get("images", [])
         if images and isinstance(images, list):
-            stroke_url = images[-1]  # last image = all strokes shown
+            stroke_urls = [u for u in images if isinstance(u, str) and u]
+            stroke_url = stroke_urls[-1] if stroke_urls else ""
 
     # Examples with audio
     examples: list[ExampleWord] = []
@@ -196,6 +199,7 @@ def get_kanji_detail(character: str) -> KanjiDetail | None:
         ),
         hint=references.get("hint", "") or "",
         stroke_diagram_url=stroke_url,
+        stroke_image_urls=stroke_urls,
         animation_url=anim_url,
         audio_urls=audio_urls,
     )
