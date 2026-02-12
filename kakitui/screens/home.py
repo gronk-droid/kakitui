@@ -6,7 +6,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Input, Label, OptionList
+from textual.widgets import Input, Label, OptionList
 from textual.widgets.option_list import Option
 
 from kakitui.data import source
@@ -40,9 +40,8 @@ class HomeScreen(Screen):
                     id="search-box",
                 )
                 yield Label("", id="no-results")
-                with VerticalScroll():
+                with VerticalScroll(can_focus=False):
                     yield OptionList(id="results-list")
-        yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#search-box", Input).focus()
@@ -80,6 +79,8 @@ class HomeScreen(Screen):
                 readings.append(r.meaning)
             label = f"{r.kanji}  —  {', '.join(readings)}"
             option_list.add_option(Option(label, id=r.kanji))
+
+        option_list.focus()
 
     def on_option_list_option_selected(
         self, event: OptionList.OptionSelected

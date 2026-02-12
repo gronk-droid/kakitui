@@ -1,5 +1,8 @@
 """Entry point for kakitui."""
 
+# Import before app runs so terminal capability detection doesn't run mid-session
+import textual_image.widget  # noqa: F401
+
 from kakitui.app import KakiTUIApp
 
 

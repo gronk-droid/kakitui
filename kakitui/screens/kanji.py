@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import threading
 import webbrowser
+from typing import TYPE_CHECKING
 
 from textual import work
 from textual.app import ComposeResult
@@ -12,7 +13,6 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
-    Footer,
     Label,
     TabbedContent,
     TabPane,
@@ -20,6 +20,10 @@ from textual.widgets import (
 
 from kakitui.data import source
 from kakitui.data.models import KanjiDetail
+from kakitui.media import fetch_stroke_images, fetch_svg_as_pillow
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 class KanjiScreen(Screen):
@@ -36,6 +40,10 @@ class KanjiScreen(Screen):
         super().__init__()
         self._kanji_char = kanji_char
         self._detail: KanjiDetail | None = None
+        self._anim_frames: list["Image.Image"] = []
+        self._anim_index = 0
+        self._anim_timer: object | None = None
+        self._anim_image_widget = None  # set when animation tab shows in-app frames
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -61,7 +69,6 @@ class KanjiScreen(Screen):
                         yield Label(
                             "Loading pronunciation...", id="pron-loading"
                         )
-        yield Footer()
 
     def on_mount(self) -> None:
         self._load_detail()
@@ -115,9 +122,8 @@ class KanjiScreen(Screen):
     # ------------------------------------------------------------------
 
     def _populate_strokes(self, detail: KanjiDetail) -> None:
-        """Populate the Strokes tab pane."""
+        """Populate the Strokes tab pane; load diagram in-app when possible."""
         pane = self.query_one("#tab-strokes", TabPane)
-        # Remove loading label
         pane.query_one("#strokes-loading", Label).remove()
 
         content = Vertical()
@@ -128,31 +134,57 @@ class KanjiScreen(Screen):
         )
         content.mount(Label(f"Total strokes: {detail.strokes}"))
 
-        if detail.stroke_diagram_url:
-            content.mount(
-                Label(
-                    f"\nFull diagram URL:\n  {detail.stroke_diagram_url}",
-                    classes="stroke-url-label",
-                    markup=False,
-                )
-            )
-            content.mount(Button("Open in browser", id="btn-open-stroke"))
-        else:
-            content.mount(Label("\nNo stroke diagram URL available."))
+        media_container = Vertical(id="stroke-media-container")
+        content.mount(media_container)
 
-        # Individual stroke URLs
+        diagram_url = detail.stroke_diagram_url or (
+            detail.stroke_image_urls[-1] if detail.stroke_image_urls else ""
+        )
+        if diagram_url:
+            self._fetch_and_show_stroke_diagram(diagram_url)
+        else:
+            media_container.mount(Label("\nNo stroke diagram URL available."))
+
+        # Individual stroke URLs (when we have kname), below diagram or fallback
         if detail.strokes > 0 and detail.kname:
             from kakitui.data.local import stroke_diagram_url
 
             content.mount(Label("\n[bold]Individual strokes:[/bold]"))
             for i in range(1, detail.strokes + 1):
                 url = stroke_diagram_url(detail.kname, i)
-                content.mount(
-                    Label(f"  Stroke {i}: {url}", markup=False)
+                content.mount(Label(f"  Stroke {i}: {url}", markup=False))
+
+    @work(thread=True)
+    def _fetch_and_show_stroke_diagram(self, url: str) -> None:
+        img = fetch_svg_as_pillow(url)
+        self.app.call_from_thread(self._mount_stroke_diagram_result, img, url)
+
+    def _mount_stroke_diagram_result(
+        self, img: Image.Image | None, url: str
+    ) -> None:
+        try:
+            container = self.query_one("#stroke-media-container", Vertical)
+        except Exception:
+            return
+        if img is not None:
+            from textual_image.widget import Image as TUIImage
+
+            container.mount(TUIImage(img))
+            container.mount(
+                Button("Open in browser", id="btn-open-stroke"),
+            )
+        else:
+            container.mount(
+                Label(
+                    f"\nFull diagram URL:\n  {url}",
+                    classes="stroke-url-label",
+                    markup=False,
                 )
+            )
+            container.mount(Button("Open in browser", id="btn-open-stroke"))
 
     def _populate_animation(self, detail: KanjiDetail) -> None:
-        """Populate the Animation tab pane."""
+        """Populate the Animation tab pane; show stroke sequence in-app when possible."""
         pane = self.query_one("#tab-animation", TabPane)
         pane.query_one("#anim-loading", Label).remove()
 
@@ -165,18 +197,79 @@ class KanjiScreen(Screen):
             )
         )
 
-        if detail.animation_url:
-            content.mount(
+        media_container = Vertical(id="anim-media-container")
+        content.mount(media_container)
+
+        if detail.stroke_image_urls:
+            self._fetch_and_show_animation(detail.stroke_image_urls, detail.animation_url)
+        elif detail.animation_url:
+            media_container.mount(
                 Label(
                     f"\nAnimation URL:\n  {detail.animation_url}",
                     markup=False,
                 )
             )
-            content.mount(
+            media_container.mount(
                 Button("Open in browser / player", id="btn-open-anim")
             )
         else:
-            content.mount(Label("\nNo animation URL available."))
+            media_container.mount(Label("\nNo animation URL available."))
+
+    @work(thread=True)
+    def _fetch_and_show_animation(
+        self, urls: list[str], fallback_animation_url: str
+    ) -> None:
+        frames = fetch_stroke_images(urls)
+        self.app.call_from_thread(
+            self._mount_animation_result, frames, fallback_animation_url
+        )
+
+    def _mount_animation_result(
+        self,
+        frames: list[Image.Image],
+        fallback_animation_url: str,
+    ) -> None:
+        try:
+            container = self.query_one("#anim-media-container", Vertical)
+        except Exception:
+            return
+        if frames:
+            from textual_image.widget import Image as TUIImage
+
+            self._anim_frames = frames
+            self._anim_index = 0
+            self._anim_image_widget = TUIImage(frames[0])
+            container.mount(self._anim_image_widget)
+            if fallback_animation_url:
+                container.mount(
+                    Button("Open full video in browser", id="btn-open-anim")
+                )
+            self._anim_timer = self.set_interval(
+                0.45, self._advance_animation, pause=False
+            )
+        else:
+            if fallback_animation_url:
+                container.mount(
+                    Label(
+                        f"\nAnimation URL:\n  {fallback_animation_url}",
+                        markup=False,
+                    )
+                )
+                container.mount(
+                    Button("Open in browser / player", id="btn-open-anim")
+                )
+            else:
+                container.mount(Label("\nNo animation URL available."))
+
+    def _advance_animation(self) -> None:
+        if not self._anim_frames or not hasattr(self, "_anim_image_widget"):
+            return
+        self._anim_index = (self._anim_index + 1) % len(self._anim_frames)
+        self._anim_image_widget.image = self._anim_frames[self._anim_index]
+
+    def on_unmount(self) -> None:
+        if self._anim_timer is not None:
+            self._anim_timer.stop()
 
     def _populate_info(self, detail: KanjiDetail) -> None:
         """Populate the Info tab pane."""
