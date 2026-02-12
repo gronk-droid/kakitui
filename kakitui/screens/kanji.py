@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Key
 from textual.screen import Screen
+from textual.widget import Widget
 from textual.widgets import (
     Button,
     Label,
@@ -20,10 +22,31 @@ from textual.widgets import (
 
 from kakitui.data import source
 from kakitui.data.models import KanjiDetail
-from kakitui.media import fetch_stroke_images, fetch_svg_as_pillow
+from kakitui.media import DEFAULT_STROKE_COLOR, fetch_stroke_images
 
 if TYPE_CHECKING:
     from PIL import Image
+
+
+class _StrokesKeyHandler(Widget):
+    """Focusable widget that captures left/right/up/down in Strokes tab to step stroke."""
+
+    DEFAULT_CSS = """
+    _StrokesKeyHandler {
+        height: 0;
+        min-height: 0;
+    }
+    """
+
+    def on_key(self, event: Key) -> None:
+        if event.key not in ("left", "right", "up", "down"):
+            return
+        if isinstance(self.screen, KanjiScreen):
+            if event.key in ("left", "up"):
+                self.screen.action_stroke_prev()
+            else:
+                self.screen.action_stroke_next()
+        event.stop()
 
 
 class KanjiScreen(Screen):
@@ -32,7 +55,11 @@ class KanjiScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Back"),
         ("b", "go_back", "Back"),
+        ("tab", "next_tab", "Next tab"),
+        ("shift+tab", "prev_tab", "Prev tab"),
     ]
+
+    TAB_ORDER = ("tab-strokes", "tab-info", "tab-pron")
 
     # Styling is in kakitui.tcss
 
@@ -40,10 +67,10 @@ class KanjiScreen(Screen):
         super().__init__()
         self._kanji_char = kanji_char
         self._detail: KanjiDetail | None = None
-        self._anim_frames: list["Image.Image"] = []
-        self._anim_index = 0
-        self._anim_timer: object | None = None
-        self._anim_image_widget = None  # set when animation tab shows in-app frames
+        self._stroke_images: list["Image.Image"] = []
+        self._stroke_index = 0
+        self._stroke_image_widget = None
+        self._stroke_index_label = None  # "Stroke N of M"
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -56,10 +83,6 @@ class KanjiScreen(Screen):
                     with TabPane("Strokes", id="tab-strokes"):
                         yield Label(
                             "Loading stroke data...", id="strokes-loading"
-                        )
-                    with TabPane("Animation", id="tab-animation"):
-                        yield Label(
-                            "Loading animation data...", id="anim-loading"
                         )
                     with TabPane("Info", id="tab-info"):
                         yield Label(
@@ -82,7 +105,6 @@ class KanjiScreen(Screen):
         if detail is None:
             for lid in (
                 "#strokes-loading",
-                "#anim-loading",
                 "#info-loading",
                 "#pron-loading",
             ):
@@ -113,7 +135,6 @@ class KanjiScreen(Screen):
 
         # Populate each tab
         self._populate_strokes(detail)
-        self._populate_animation(detail)
         self._populate_info(detail)
         self._populate_pronunciation(detail)
 
@@ -122,7 +143,7 @@ class KanjiScreen(Screen):
     # ------------------------------------------------------------------
 
     def _populate_strokes(self, detail: KanjiDetail) -> None:
-        """Populate the Strokes tab pane; load diagram in-app when possible."""
+        """Populate the Strokes tab pane with each stroke SVG in a grid (theme-colored)."""
         pane = self.query_one("#tab-strokes", TabPane)
         pane.query_one("#strokes-loading", Label).remove()
 
@@ -130,146 +151,169 @@ class KanjiScreen(Screen):
         pane.mount(content)
 
         content.mount(
-            Label("[bold]Stroke Order Diagram[/bold]", classes="info-heading")
+            Label("[bold]Stroke Order[/bold]", classes="info-heading")
         )
         content.mount(Label(f"Total strokes: {detail.strokes}"))
 
         media_container = Vertical(id="stroke-media-container")
         content.mount(media_container)
 
-        diagram_url = detail.stroke_diagram_url or (
-            detail.stroke_image_urls[-1] if detail.stroke_image_urls else ""
-        )
-        if diagram_url:
-            self._fetch_and_show_stroke_diagram(diagram_url)
+        if detail.strokes > 0 and (detail.stroke_image_urls or detail.kname):
+            stroke_urls = list(detail.stroke_image_urls) if detail.stroke_image_urls else []
+            if not stroke_urls and detail.kname:
+                from kakitui.data.local import stroke_diagram_url
+
+                stroke_urls = [
+                    stroke_diagram_url(detail.kname, i)
+                    for i in range(1, detail.strokes + 1)
+                ]
+            if stroke_urls:
+                self._fetch_and_show_stroke_grid(stroke_urls)
+            else:
+                media_container.mount(Label("\nNo stroke URLs available."))
         else:
-            media_container.mount(Label("\nNo stroke diagram URL available."))
-
-        # Individual stroke URLs (when we have kname), below diagram or fallback
-        if detail.strokes > 0 and detail.kname:
-            from kakitui.data.local import stroke_diagram_url
-
-            content.mount(Label("\n[bold]Individual strokes:[/bold]"))
-            for i in range(1, detail.strokes + 1):
-                url = stroke_diagram_url(detail.kname, i)
-                content.mount(Label(f"  Stroke {i}: {url}", markup=False))
+            media_container.mount(Label("\nNo stroke data available."))
 
     @work(thread=True)
-    def _fetch_and_show_stroke_diagram(self, url: str) -> None:
-        img = fetch_svg_as_pillow(url)
-        self.app.call_from_thread(self._mount_stroke_diagram_result, img, url)
+    def _fetch_and_show_stroke_grid(self, urls: list[str]) -> None:
+        images = fetch_stroke_images(urls, stroke_color=DEFAULT_STROKE_COLOR)
+        self.app.call_from_thread(self._mount_stroke_grid_result, images)
 
-    def _mount_stroke_diagram_result(
-        self, img: Image.Image | None, url: str
-    ) -> None:
+    def _mount_stroke_grid_result(self, images: list[Image.Image]) -> None:
         try:
             container = self.query_one("#stroke-media-container", Vertical)
         except Exception:
             return
-        if img is not None:
-            from textual_image.widget import Image as TUIImage
+        if not images:
+            container.mount(Label("\nCould not load stroke images."))
+            return
+        from textual_image.widget import Image as TUIImage
 
-            container.mount(TUIImage(img))
-            container.mount(
-                Button("Open in browser", id="btn-open-stroke"),
-            )
-        else:
-            container.mount(
-                Label(
-                    f"\nFull diagram URL:\n  {url}",
-                    classes="stroke-url-label",
-                    markup=False,
-                )
-            )
-            container.mount(Button("Open in browser", id="btn-open-stroke"))
+        self._stroke_images = images
+        self._stroke_index = 0
+        total = len(images)
 
-    def _populate_animation(self, detail: KanjiDetail) -> None:
-        """Populate the Animation tab pane; show stroke sequence in-app when possible."""
-        pane = self.query_one("#tab-animation", TabPane)
-        pane.query_one("#anim-loading", Label).remove()
-
-        content = Vertical()
-        pane.mount(content)
-
-        content.mount(
-            Label(
-                "[bold]Stroke Order Animation[/bold]", classes="info-heading"
-            )
+        key_handler = _StrokesKeyHandler(id="strokes-key-handler")
+        container.mount(key_handler)
+        self._stroke_index_label = Label(
+            f"Stroke 1 of {total}",
+            id="stroke-index-label",
+            classes="info-row",
         )
-
-        media_container = Vertical(id="anim-media-container")
-        content.mount(media_container)
-
-        if detail.stroke_image_urls:
-            self._fetch_and_show_animation(detail.stroke_image_urls, detail.animation_url)
-        elif detail.animation_url:
-            media_container.mount(
-                Label(
-                    f"\nAnimation URL:\n  {detail.animation_url}",
-                    markup=False,
-                )
-            )
-            media_container.mount(
-                Button("Open in browser / player", id="btn-open-anim")
-            )
-        else:
-            media_container.mount(Label("\nNo animation URL available."))
-
-    @work(thread=True)
-    def _fetch_and_show_animation(
-        self, urls: list[str], fallback_animation_url: str
-    ) -> None:
-        frames = fetch_stroke_images(urls)
-        self.app.call_from_thread(
-            self._mount_animation_result, frames, fallback_animation_url
-        )
-
-    def _mount_animation_result(
-        self,
-        frames: list[Image.Image],
-        fallback_animation_url: str,
-    ) -> None:
+        container.mount(self._stroke_index_label)
+        self._stroke_image_widget = TUIImage(images[0])
+        container.mount(self._stroke_image_widget)
         try:
-            container = self.query_one("#anim-media-container", Vertical)
+            if self.query_one("#kanji-tabs", TabbedContent).active == "tab-strokes":
+                key_handler.focus()
         except Exception:
-            return
-        if frames:
-            from textual_image.widget import Image as TUIImage
+            pass
 
-            self._anim_frames = frames
-            self._anim_index = 0
-            self._anim_image_widget = TUIImage(frames[0])
-            container.mount(self._anim_image_widget)
-            if fallback_animation_url:
-                container.mount(
-                    Button("Open full video in browser", id="btn-open-anim")
-                )
-            self._anim_timer = self.set_interval(
-                0.45, self._advance_animation, pause=False
+    def _is_strokes_tab_active(self) -> bool:
+        try:
+            tabs = self.query_one("#kanji-tabs", TabbedContent)
+            return tabs.active == "tab-strokes"
+        except Exception:
+            return False
+
+    def _focus_tab_content(self, pane: TabPane) -> None:
+        """Focus the main content of a tab pane (key handler or first focusable)."""
+        try:
+            if pane.id == "tab-strokes":
+                pane.query_one("#strokes-key-handler", _StrokesKeyHandler).focus()
+                return
+        except Exception:
+            pass
+        try:
+            for child in pane.walk_children(Widget):
+                if child.can_focus:
+                    child.focus()
+                    return
+        except Exception:
+            pass
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """When a tab becomes active, focus its content so arrow keys work without tabbing to it."""
+        self._focus_tab_content(event.pane)
+
+    def action_next_tab(self) -> None:
+        """Switch to the next tab (Tab key)."""
+        tabs = self.query_one("#kanji-tabs", TabbedContent)
+        order = self.TAB_ORDER
+        try:
+            idx = order.index(tabs.active) if tabs.active else -1
+        except ValueError:
+            idx = -1
+        next_idx = (idx + 1) % len(order)
+        tabs.active = order[next_idx]
+        pane = tabs.active_pane
+        if pane is not None:
+            self._focus_tab_content(pane)
+
+    def action_prev_tab(self) -> None:
+        """Switch to the previous tab (Shift+Tab)."""
+        tabs = self.query_one("#kanji-tabs", TabbedContent)
+        order = self.TAB_ORDER
+        try:
+            idx = order.index(tabs.active) if tabs.active else 0
+        except ValueError:
+            idx = 0
+        prev_idx = (idx - 1) % len(order)
+        tabs.active = order[prev_idx]
+        pane = tabs.active_pane
+        if pane is not None:
+            self._focus_tab_content(pane)
+
+    def on_key(self, event: Key) -> None:
+        """Capture Tab/Shift+Tab to switch tabs; arrow keys step in Strokes/Animation tab."""
+        if event.key == "shift+tab":
+            self.action_prev_tab()
+            event.stop()
+            return
+        if event.key == "tab":
+            self.action_next_tab()
+            event.stop()
+            return
+        # When Strokes tab is active, arrow keys step (don't switch tabs)
+        if event.key in ("left", "right", "up", "down"):
+            if self._is_strokes_tab_active() and self._stroke_images:
+                if event.key in ("left", "up"):
+                    self.action_stroke_prev()
+                else:
+                    self.action_stroke_next()
+                event.stop()
+
+    def _update_stroke_display(self) -> None:
+        """Update the displayed stroke image and index label."""
+        if not self._stroke_images or self._stroke_image_widget is None:
+            return
+        n = len(self._stroke_images)
+        self._stroke_index = self._stroke_index % n
+        self._stroke_image_widget.image = self._stroke_images[self._stroke_index]
+        if self._stroke_index_label is not None:
+            self._stroke_index_label.update(
+                f"Stroke {self._stroke_index + 1} of {n}"
             )
-        else:
-            if fallback_animation_url:
-                container.mount(
-                    Label(
-                        f"\nAnimation URL:\n  {fallback_animation_url}",
-                        markup=False,
-                    )
-                )
-                container.mount(
-                    Button("Open in browser / player", id="btn-open-anim")
-                )
-            else:
-                container.mount(Label("\nNo animation URL available."))
 
-    def _advance_animation(self) -> None:
-        if not self._anim_frames or not hasattr(self, "_anim_image_widget"):
+    def action_stroke_prev(self) -> None:
+        """Step to previous stroke in Strokes tab."""
+        if not self._is_strokes_tab_active() or not self._stroke_images:
             return
-        self._anim_index = (self._anim_index + 1) % len(self._anim_frames)
-        self._anim_image_widget.image = self._anim_frames[self._anim_index]
+        if self._stroke_image_widget is None:
+            return
+        self._stroke_index = (self._stroke_index - 1) % len(self._stroke_images)
+        self._update_stroke_display()
 
-    def on_unmount(self) -> None:
-        if self._anim_timer is not None:
-            self._anim_timer.stop()
+    def action_stroke_next(self) -> None:
+        """Step to next stroke in Strokes tab."""
+        if not self._is_strokes_tab_active() or not self._stroke_images:
+            return
+        if self._stroke_image_widget is None:
+            return
+        self._stroke_index = (self._stroke_index + 1) % len(self._stroke_images)
+        self._update_stroke_display()
 
     def _populate_info(self, detail: KanjiDetail) -> None:
         """Populate the Info tab pane."""
@@ -408,11 +452,6 @@ class KanjiScreen(Screen):
             and self._detail.stroke_diagram_url
         ):
             webbrowser.open(self._detail.stroke_diagram_url)
-        elif (
-            event.button.id == "btn-open-anim"
-            and self._detail.animation_url
-        ):
-            webbrowser.open(self._detail.animation_url)
 
     def key_p(self) -> None:
         """Play the first available example audio."""
