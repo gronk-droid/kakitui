@@ -283,6 +283,12 @@ wheels = [
 ]
 
 [[package]]
+name = "chirptext"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/1f/7da1ed147b9d8687283dfea4f8413ab9067242591978db493fe3a8d4b96c/chirptext-0.1.2.tar.gz", hash = "sha256:643c9c11508f509b37257e3f3a629a668c0908ae5f582d7b9f131234a7379303", size = 70576, upload-time = "2021-05-20T03:19:39.082Z" }
+
+[[package]]
 name = "click"
 version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -424,6 +430,22 @@ wheels = [
 ]
 
 [[package]]
+name = "jamdict"
+version = "0.1a11.post2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "chirptext" },
+    { name = "puchikarui" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/20/98bcf088707850f0c9104b6499b9afff7a4db2e5849a9a99e436400e0a6d/jamdict-0.1a11.post2.tar.gz", hash = "sha256:fbb54de3d58ecdb9b53498ae873ab6519312c86bc848a9769d92b1b238d4c914", size = 203716, upload-time = "2021-06-06T04:20:36.947Z" }
+
+[[package]]
+name = "jamdict-data-fix"
+version = "1.5.1a2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/ff/afd77047b08d122797d85a0f1da564c884cb3525f4a251c7367de91de7a2/jamdict_data_fix-1.5.1a2.tar.gz", hash = "sha256:f1c72a8f6c86be150cb068a0318973f5db62759fa6c31f21bee0ca21f27e5cd4", size = 53941858, upload-time = "2024-11-23T17:32:33.08Z" }
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -441,6 +463,8 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cairosvg" },
+    { name = "jamdict" },
+    { name = "jamdict-data-fix" },
     { name = "requests" },
     { name = "textual" },
     { name = "textual-image", extra = ["textual"] },
@@ -455,6 +479,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cairosvg", specifier = ">=2.7.0" },
+    { name = "jamdict", specifier = ">=0.1a11" },
+    { name = "jamdict-data-fix", specifier = ">=1.5" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "textual", specifier = ">=3.2.0" },
     { name = "textual-image", extras = ["textual"], specifier = ">=0.8.0" },
@@ -883,6 +909,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/2d/346e946d4951f37eca1e4f55be0f0174c52cd70720f84029b02f296f4a38/propcache-0.4.1-cp314-cp314t-win_arm64.whl", hash = "sha256:ecef2343af4cc68e05131e45024ba34f6095821988a9d0a02aa7c73fcc448aa9", size = 40428, upload-time = "2025-10-08T19:48:35.441Z" },
     { url = "https://files.pythonhosted.org/packages/5b/5a/bc7b4a4ef808fa59a816c17b20c4bef6884daebbdf627ff2a161da67da19/propcache-0.4.1-py3-none-any.whl", hash = "sha256:af2a6052aeb6cf17d3e46ee169099044fd8224cbaf75c76a2ef596e8163e2237", size = 13305, upload-time = "2025-10-08T19:49:00.792Z" },
 ]
+
+[[package]]
+name = "puchikarui"
+version = "0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/6d/6a3c0d98bdc128ed85baa111754de61fc4d415ba42b7516fb7ee1dd0e13d/puchikarui-0.1.tar.gz", hash = "sha256:8ebe96e8683eac82624eb90dd517e26421e467637b3a1fe1ef5275ba2dacddc8", size = 15463, upload-time = "2021-05-13T07:49:34.98Z" }
 
 [[package]]
 name = "pycparser"

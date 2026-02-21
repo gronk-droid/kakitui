@@ -59,3 +59,22 @@ class KanjiDetail:
     stroke_diagram_url: str = ""
     stroke_image_urls: list[str] = field(default_factory=list)  # ordered stroke SVGs for in-app display
     audio_urls: list[str] = field(default_factory=list)
+
+
+@dataclass
+class WordResult:
+    """A word search result from JMdict (lightweight, for listing)."""
+
+    text: str  # e.g. "食べる"
+    reading: str  # e.g. "たべる"
+    meanings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class WordDetail:
+    """Full word detail with its constituent kanji characters."""
+
+    text: str
+    reading: str
+    meanings: list[str] = field(default_factory=list)
+    kanji_chars: list[str] = field(default_factory=list)  # kanji + kana characters from the word

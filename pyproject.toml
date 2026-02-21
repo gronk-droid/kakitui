@@ -8,6 +8,8 @@ dependencies = [
     "requests>=2.31.0",
     "textual-image[textual]>=0.8.0",
     "cairosvg>=2.7.0",
+    "jamdict>=0.1a11",
+    "jamdict-data-fix>=1.5",
 ]
 
 [project.scripts]
