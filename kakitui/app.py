@@ -21,7 +21,7 @@ class KakiTUIApp(App):
     CSS_PATH = "kakitui.tcss"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
+        ("ctrl+q", "quit", "Quit"),
         ("question_mark", "show_help", "Help"),
     ]
 

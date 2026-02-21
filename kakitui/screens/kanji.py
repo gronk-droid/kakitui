@@ -54,7 +54,6 @@ class KanjiScreen(Screen):
 
     BINDINGS = [
         ("escape", "go_back", "Back"),
-        ("b", "go_back", "Back"),
         ("tab", "next_tab", "Next tab"),
         ("shift+tab", "prev_tab", "Prev tab"),
     ]

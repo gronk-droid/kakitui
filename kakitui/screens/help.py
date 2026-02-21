@@ -11,18 +11,17 @@ from textual.widgets import Label, Static
 # Curated hints: (key_display, description) per section
 GLOBAL_HINTS = [
     ("?", "Show this help"),
-    ("q", "Quit"),
+    ("Ctrl+q", "Quit"),
 ]
 
 HOME_HINTS = [
     ("Enter", "Search / submit"),
     ("↑ / ↓", "Move through results"),
     ("Enter", "Open selected kanji"),
-    ("Esc", "Quit"),
 ]
 
 KANJI_HINTS = [
-    ("Esc / b", "Back to search"),
+    ("Esc", "Back to search"),
     ("Tab", "Switch tab (Strokes / Info / Pronunciation)"),
     ("← / → or ↑ / ↓", "Step through strokes (Strokes tab)"),
     ("p", "Play first example audio"),

@@ -17,9 +17,7 @@ from kakitui.widgets.banner import Banner
 class HomeScreen(Screen):
     """The main landing screen with search."""
 
-    BINDINGS = [
-        ("escape", "quit", "Quit"),
-    ]
+    BINDINGS = []
 
     # Styling is in kakitui.tcss
 
