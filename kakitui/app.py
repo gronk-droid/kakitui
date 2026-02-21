@@ -13,7 +13,7 @@ CSS_PATH = Path(__file__).parent / "kakitui.tcss"
 
 
 class KakiTUIApp(App):
-    """Kanji stroke-order lookup TUI, powered by Kanji Alive."""
+    """Kanji stroke-order lookup TUI."""
 
     TITLE = "kakitui"
     SUB_TITLE = "「書き」TUI — Kanji Stroke Order Lookup"

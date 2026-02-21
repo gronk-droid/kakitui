@@ -1,96 +1,124 @@
-"""Fetch SVG media and convert to PNG for in-app display."""
+"""Generate per-stroke-step PNG frames from animCJK SVGs."""
 
 from __future__ import annotations
 
+import copy
 import io
 import logging
-import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-import requests
 
 if TYPE_CHECKING:
     from PIL import Image
 
 log = logging.getLogger(__name__)
 
-# Default stroke color for theme contrast (catppuccin text color)
 DEFAULT_STROKE_COLOR = "#cdd6f4"
+_GUIDE_COLOR = "#555555"
+
+_SVG_NS = "http://www.w3.org/2000/svg"
+ET.register_namespace("", _SVG_NS)
+
+_TAG_PATH = f"{{{_SVG_NS}}}path"
+_TAG_STYLE = f"{{{_SVG_NS}}}style"
+_TAG_DEFS = f"{{{_SVG_NS}}}defs"
+
+# Inline style applied to median paths that should appear fully drawn.
+# stroke-width/linecap match the animCJK CSS defaults.
+_MEDIAN_DRAWN_STYLE = (
+    "stroke-width:128;stroke-linecap:round;fill:none;stroke:{color};"
+)
 
 
-def _apply_stroke_color(svg_bytes: bytes, color_hex: str) -> bytes:
-    """Replace black fill/stroke in SVG with theme color for contrast."""
-    # Normalize to 6-char hex without leading #
-    hex_only = color_hex.lstrip("#")
-    if len(hex_only) == 6:
-        color_attr = f"#{hex_only}"
-    else:
-        color_attr = DEFAULT_STROKE_COLOR
-    try:
-        text = svg_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        return svg_bytes
-    # Replace common black fill and stroke used in kanji stroke SVGs
-    text = re.sub(r'fill="#000000"', f'fill="{color_attr}"', text, flags=re.IGNORECASE)
-    text = re.sub(r'stroke="none"', f'stroke="{color_attr}"', text, flags=re.IGNORECASE)
-    text = re.sub(r'fill="#000"(\s|>)', rf'fill="{color_attr}"\1', text, flags=re.IGNORECASE)
-    return text.encode("utf-8")
+def _parse_animcjk_svg(
+    svg_path: str | Path,
+) -> tuple[ET.Element, list[ET.Element], list[ET.Element]]:
+    """Parse an animCJK SVG.
 
-
-def fetch_svg_as_pillow(
-    url_or_path: str,
-    stroke_color: str | None = None,
-) -> "Image.Image | None":
-    """Load an SVG from a URL or local file path; return a Pillow Image (PNG), or None on failure.
-
-    If stroke_color is set (e.g. theme foreground hex like "#cdd6f4"), black fill/stroke
-    in the SVG are replaced with that color for better contrast on the theme background.
+    Returns (root, shape_paths, median_paths) where:
+    - shape_paths: <path> elements with an ``id`` (stroke outlines, gray guide)
+    - median_paths: <path> elements with a ``clip-path`` (animated center-lines)
+    Both lists are in document order (stroke 1 first).
     """
-    path = Path(url_or_path)
-    if path.is_file():
-        try:
-            svg_bytes = path.read_bytes()
-        except OSError as e:
-            log.warning("Failed to read %s: %s", url_or_path, e)
-            return None
-    elif url_or_path.startswith("http://") or url_or_path.startswith("https://"):
-        try:
-            resp = requests.get(url_or_path, timeout=10)
-            resp.raise_for_status()
-            svg_bytes = resp.content
-        except requests.RequestException as e:
-            log.warning("Failed to fetch %s: %s", url_or_path, e)
-            return None
-    else:
-        log.warning("Not a file or URL: %s", url_or_path)
-        return None
+    tree = ET.parse(svg_path)
+    root = tree.getroot()
 
-    if stroke_color:
-        svg_bytes = _apply_stroke_color(svg_bytes, stroke_color)
+    shape_paths: list[ET.Element] = []
+    median_paths: list[ET.Element] = []
+
+    for child in list(root):
+        if child.tag == _TAG_STYLE:
+            root.remove(child)
+        elif child.tag == _TAG_PATH:
+            if child.get("id"):
+                shape_paths.append(child)
+            elif child.get("clip-path"):
+                median_paths.append(child)
+
+    return root, shape_paths, median_paths
+
+
+def animcjk_svg_to_frames(
+    svg_path: str | Path,
+    stroke_color: str | None = None,
+) -> list["Image.Image"]:
+    """Generate N cumulative stroke-step PNG frames from an animCJK SVG.
+
+    Each frame shows:
+    - All stroke outlines as a dim gray guide (the full character silhouette)
+    - Strokes 1..k rendered via their median paths clipped to the stroke
+      shapes, filled in stroke direction with the theme color
+
+    Returns a list of Pillow Images (one per stroke step).
+    """
+    try:
+        root, shape_paths, median_paths = _parse_animcjk_svg(svg_path)
+    except Exception as e:
+        log.warning("Failed to parse animCJK SVG %s: %s", svg_path, e)
+        return []
+
+    n = len(median_paths)
+    if n == 0:
+        log.warning("No median (stroke) paths found in %s", svg_path)
+        return []
+
+    color = stroke_color or DEFAULT_STROKE_COLOR
+    drawn_style = _MEDIAN_DRAWN_STYLE.format(color=color)
+
+    for sp in shape_paths:
+        sp.set("fill", _GUIDE_COLOR)
 
     try:
         import cairosvg
         from PIL import Image as PILImage
-
-        png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-        return PILImage.open(io.BytesIO(png_bytes)).copy()
     except Exception as e:
-        log.warning("Failed to convert SVG to PNG: %s", e)
-        return None
+        log.warning("Missing dependency for SVG rendering: %s", e)
+        return []
 
+    frames: list["Image.Image"] = []
 
-def fetch_stroke_images(
-    urls: list[str],
-    stroke_color: str | None = None,
-) -> list["Image.Image"]:
-    """Fetch multiple SVG URLs and return list of Pillow Images (skips failures).
+    for k in range(1, n + 1):
+        frame_root = copy.deepcopy(root)
 
-    If stroke_color is set, stroke SVGs are recolored for theme contrast.
-    """
-    result: list["Image.Image"] = []
-    for url in urls:
-        img = fetch_svg_as_pillow(url, stroke_color=stroke_color)
-        if img is not None:
-            result.append(img)
-    return result
+        median_idx = 0
+        for child in frame_root:
+            if child.tag != _TAG_PATH or not child.get("clip-path"):
+                continue
+            median_idx += 1
+            if median_idx <= k:
+                child.set("style", drawn_style)
+                child.attrib.pop("pathLength", None)
+            else:
+                child.set("display", "none")
+
+        svg_bytes = ET.tostring(frame_root, encoding="unicode").encode("utf-8")
+
+        try:
+            png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
+            img = PILImage.open(io.BytesIO(png_bytes)).copy()
+            frames.append(img)
+        except Exception as e:
+            log.warning("Failed to render frame %d of %s: %s", k, svg_path, e)
+
+    return frames

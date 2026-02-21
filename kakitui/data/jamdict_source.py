@@ -1,13 +1,13 @@
 """Data source backed by jamdict (JMdict + KANJIDIC2).
 
 Provides word search via JMdict and kanji detail via KANJIDIC2.
-Stroke image URLs are resolved from the local CSV's kname column.
+Stroke data is resolved separately via animCJK (see source.py).
 """
 
 from __future__ import annotations
 
+import threading
 import unicodedata
-from functools import lru_cache
 
 from kakitui.data.models import (
     ExampleWord,
@@ -18,19 +18,22 @@ from kakitui.data.models import (
 )
 
 # ---------------------------------------------------------------------------
-# Lazy singleton — jamdict DB is ~80 MB, only open once.
+# Thread-local Jamdict instances — SQLite connections cannot be shared across
+# threads, and jamdict's internal ExecutionContext objects trigger commits on
+# garbage collection. A per-thread instance avoids all cross-thread issues.
 # ---------------------------------------------------------------------------
 
-_jam = None
+_local = threading.local()
 
 
 def _get_jam():
-    global _jam  # noqa: PLW0603
-    if _jam is None:
+    jam = getattr(_local, "jam", None)
+    if jam is None:
         from jamdict import Jamdict
 
-        _jam = Jamdict()
-    return _jam
+        jam = Jamdict()
+        _local.jam = jam
+    return jam
 
 
 # ---------------------------------------------------------------------------
@@ -71,22 +74,6 @@ def extract_japanese_chars(text: str) -> list[str]:
             seen.add(ch)
             result.append(ch)
     return result
-
-
-@lru_cache(maxsize=1)
-def _kname_map() -> dict[str, str]:
-    """Build a kanji→kname mapping from the local CSV (needed for stroke URLs)."""
-    from kakitui.data.local import _load_csv
-
-    return {
-        row["kanji"]: row["kname"]
-        for row in _load_csv()
-        if row.get("kanji") and row.get("kname")
-    }
-
-
-def _kname_for(kanji_char: str) -> str:
-    return _kname_map().get(kanji_char, "")
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +123,6 @@ def search_kanji(query: str) -> list[KanjiResult]:
         results.append(
             KanjiResult(
                 kanji=char.literal,
-                kname=_kname_for(char.literal),
                 meaning=", ".join(eng),
                 grade=char.grade or 0,
                 strokes=char.stroke_count or 0,
@@ -146,7 +132,7 @@ def search_kanji(query: str) -> list[KanjiResult]:
 
 
 # ---------------------------------------------------------------------------
-# Kanji detail (KANJIDIC2 text + CSV kname for stroke URLs)
+# Kanji detail (KANJIDIC2 text data only; animcjk_svg_path set by source.py)
 # ---------------------------------------------------------------------------
 
 
@@ -154,7 +140,7 @@ def get_kanji_detail(kanji_char: str) -> KanjiDetail | None:
     """Return full detail for a single kanji character.
 
     Text data comes from KANJIDIC2 via jamdict.
-    Stroke image URLs come from the local CSV's kname mapping.
+    The animcjk_svg_path field is left empty here and populated by source.py.
     """
     jam = _get_jam()
     result = jam.lookup(kanji_char)
@@ -177,19 +163,6 @@ def get_kanji_detail(kanji_char: str) -> KanjiDetail | None:
     on_readings = [r.value for r in rmg.on_readings] if rmg else []
     kun_readings = [r.value for r in rmg.kun_readings] if rmg else []
 
-    kname = _kname_for(kanji_char)
-    strokes = char.stroke_count or 0
-
-    # Build stroke image URLs from the kname (Kanji Alive assets)
-    stroke_image_urls: list[str] = []
-    if kname and strokes:
-        from kakitui.data.local import stroke_diagram_url
-
-        stroke_image_urls = [
-            stroke_diagram_url(kname, i) for i in range(1, strokes + 1)
-        ]
-
-    # Build example words from JMdict entries in the same lookup result
     examples: list[ExampleWord] = []
     for entry in result.entries[:6]:
         jp = entry.kanji_forms[0].text if entry.kanji_forms else ""
@@ -199,25 +172,15 @@ def get_kanji_detail(kanji_char: str) -> KanjiDetail | None:
         if display and en_parts:
             examples.append(ExampleWord(japanese=display, english=", ".join(en_parts)))
 
-    # Audio URLs from kname (Kanji Alive)
-    audio_urls: list[str] = []
-    if kname:
-        from kakitui.data.local import example_audio_url
-
-        audio_urls = [example_audio_url(kname, i) for i in range(len(examples))]
-
     return KanjiDetail(
         kanji=kanji_char,
-        kname=kname,
         meaning=", ".join(eng_meanings),
         grade=char.grade or 0,
-        strokes=strokes,
+        strokes=char.stroke_count or 0,
         onyomi_ja=" ".join(on_readings),
         onyomi="",
         kunyomi_ja=" ".join(kun_readings),
         kunyomi="",
         examples=examples,
         radical=RadicalInfo(),
-        stroke_image_urls=stroke_image_urls,
-        audio_urls=audio_urls,
     )

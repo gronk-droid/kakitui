@@ -31,15 +31,13 @@ uv run python -m kakitui
 
 ### Key bindings
 
-| Key       | Action                         |
-| --------- | ------------------------------ |
-| `?`       | **Show key bindings**          |
-| `Enter`   | Submit search / select result  |
-| `↑` / `↓` | Navigate search results / tabs |
-| `Escape`  | Go back / quit                 |
-| `b`       | Go back (detail screen)        |
-| `p`       | Play example audio             |
-| `q`       | Quit                           |
+| Key        | Action                         |
+| ---------- | ------------------------------ |
+| `?`        | **Show key bindings**          |
+| `Enter`    | Submit search / select result  |
+| `↑` / `↓`  | Navigate search results / tabs |
+| `Escape`   | Go back / quit                 |
+| ctrl + `q` | Quit                           |
 
 
 ## Development
@@ -57,4 +55,5 @@ uv run textual run --dev kakitui.app:KakiTUIApp
 
 ## Credits
 
-- Kanji data and media from [Kanji Alive](https://kanjialive.com/)
+- Stroke order data from [animCJK](https://github.com/parsimonhi/animCJK)
+- Kanji dictionary data from [KANJIDIC2](http://www.edrdg.org/wiki/index.php/KANJIDIC_Project) via [jamdict](https://github.com/neocl/jamdict)

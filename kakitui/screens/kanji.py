@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import threading
-import webbrowser
 from typing import TYPE_CHECKING
 
 from textual import work
@@ -14,7 +11,6 @@ from textual.events import Key
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import (
-    Button,
     Label,
     TabbedContent,
     TabPane,
@@ -22,7 +18,7 @@ from textual.widgets import (
 
 from kakitui.data import source
 from kakitui.data.models import KanjiDetail
-from kakitui.media import DEFAULT_STROKE_COLOR, fetch_stroke_images
+from kakitui.media import DEFAULT_STROKE_COLOR, animcjk_svg_to_frames
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -261,47 +257,47 @@ class KanjiScreen(Screen):
         content.mount(
             Label("[bold]Stroke Order[/bold]", classes="info-heading")
         )
-        content.mount(Label(f"Total strokes: {detail.strokes}"))
+        if detail.strokes > 0:
+            content.mount(Label(f"Total strokes: {detail.strokes}"))
 
         media_container = Vertical(id="stroke-media-container")
         content.mount(media_container)
 
-        if detail.strokes > 0 and (detail.stroke_image_urls or detail.kname):
-            stroke_urls = (
-                list(detail.stroke_image_urls)
-                if detail.stroke_image_urls
-                else []
-            )
-            if not stroke_urls and detail.kname:
-                from kakitui.data.local import stroke_diagram_url
-
-                stroke_urls = [
-                    stroke_diagram_url(detail.kname, i)
-                    for i in range(1, detail.strokes + 1)
-                ]
-            if stroke_urls:
-                cached = self._stroke_images_cache.get(detail.kanji)
-                if cached:
-                    self._mount_stroke_grid_result(cached)
-                else:
-                    self._fetch_and_show_stroke_grid(stroke_urls, detail.kanji)
+        if detail.animcjk_svg_path:
+            cached = self._stroke_images_cache.get(detail.kanji)
+            if cached:
+                self._mount_stroke_grid_result(cached, media_container)
             else:
-                media_container.mount(Label("\nNo stroke URLs available."))
+                self._fetch_and_show_stroke_grid(
+                    detail.animcjk_svg_path, detail.kanji
+                )
         else:
             media_container.mount(Label("\nNo stroke data available."))
 
     @work(thread=True)
-    def _fetch_and_show_stroke_grid(self, urls: list[str], kanji_char: str) -> None:
-        images = fetch_stroke_images(urls, stroke_color=DEFAULT_STROKE_COLOR)
+    def _fetch_and_show_stroke_grid(self, svg_path: str, kanji_char: str) -> None:
+        images = animcjk_svg_to_frames(svg_path, stroke_color=DEFAULT_STROKE_COLOR)
         if images:
             self._stroke_images_cache[kanji_char] = images
-        self.app.call_from_thread(self._mount_stroke_grid_result, images)
+        self.app.call_from_thread(
+            self._mount_stroke_grid_callback, images, kanji_char
+        )
 
-    def _mount_stroke_grid_result(self, images: list[Image.Image]) -> None:
+    def _mount_stroke_grid_callback(
+        self, images: list[Image.Image], kanji_char: str
+    ) -> None:
+        """Worker callback — only mount if the user hasn't navigated away."""
+        if self._current_kanji != kanji_char:
+            return
         try:
             container = self.query_one("#stroke-media-container", Vertical)
         except Exception:
             return
+        self._mount_stroke_grid_result(images, container)
+
+    def _mount_stroke_grid_result(
+        self, images: list[Image.Image], container: Vertical
+    ) -> None:
         if not images:
             container.mount(Label("\nCould not load stroke images."))
             return
@@ -522,13 +518,6 @@ class KanjiScreen(Screen):
                 Label(f"  Strokes: {rad.strokes}", classes="info-row")
             )
 
-        if detail.hint:
-            content.mount(Label(""))
-            content.mount(
-                Label("[bold]Mnemonic Hint[/bold]", classes="info-heading")
-            )
-            content.mount(Label(f"  {detail.hint}"))
-
     # ------------------------------------------------------------------
     # Pronunciation tab
     # ------------------------------------------------------------------
@@ -569,24 +558,11 @@ class KanjiScreen(Screen):
             content.mount(
                 Label("[bold]Example Words[/bold]", classes="pron-heading")
             )
-            for i, ex in enumerate(detail.examples):
-                has_audio = (
-                    i < len(detail.audio_urls) and detail.audio_urls[i]
-                )
-                audio_indicator = " [dim]♪[/dim]" if has_audio else ""
+            for ex in detail.examples:
                 content.mount(
                     Label(
-                        f"  {ex.japanese}  —  {ex.english}{audio_indicator}",
+                        f"  {ex.japanese}  —  {ex.english}",
                         classes="example-item",
-                    )
-                )
-
-            if any(detail.audio_urls):
-                content.mount(Label(""))
-                content.mount(
-                    Label(
-                        "[dim]♪ indicates audio available. "
-                        "Press 'p' to play the first example audio.[/dim]"
                     )
                 )
 
@@ -597,41 +573,3 @@ class KanjiScreen(Screen):
     def action_go_back(self) -> None:
         self.app.pop_screen()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        detail = self._detail
-        if detail is None:
-            return
-        if (
-            event.button.id == "btn-open-stroke"
-            and detail.stroke_diagram_url
-        ):
-            webbrowser.open(detail.stroke_diagram_url)
-
-    def key_p(self) -> None:
-        detail = self._detail
-        if detail is None:
-            return
-        for url in detail.audio_urls:
-            if url:
-                self._play_audio(url)
-                break
-
-    def _play_audio(self, url: str) -> None:
-        def _try_play() -> None:
-            for player in ("mpv", "ffplay", "xdg-open"):
-                try:
-                    cmd = [player]
-                    if player == "mpv":
-                        cmd.extend(["--no-video", "--really-quiet"])
-                    elif player == "ffplay":
-                        cmd.extend(
-                            ["-nodisp", "-autoexit", "-loglevel", "quiet"]
-                        )
-                    cmd.append(url)
-                    subprocess.run(cmd, timeout=15)  # noqa: S603
-                    return
-                except (FileNotFoundError, subprocess.TimeoutExpired):
-                    continue
-            webbrowser.open(url)
-
-        threading.Thread(target=_try_play, daemon=True).start()

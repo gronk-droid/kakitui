@@ -24,7 +24,6 @@ KANJI_HINTS = [
     ("Esc", "Back to search"),
     ("Tab", "Switch tab (Strokes / Info / Pronunciation)"),
     ("← / → or ↑ / ↓", "Step through strokes (Strokes tab)"),
-    ("p", "Play first example audio"),
 ]
 
 
