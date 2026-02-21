@@ -1,4 +1,4 @@
-![](resources/kakitui.svg)
+<img src="resources/kakitui.svg" width="50%"/>
 
  A terminal-based kanji stroke-order lookup app.
 
